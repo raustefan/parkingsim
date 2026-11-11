@@ -1,9 +1,8 @@
 name: track parking
 
+# Triggered every 5 min by cron-job.org via the API; GitHub's own schedule never fired for this repo.
 on:
-  schedule:
-    - cron: "2-59/5 * * * *"  # every 5 min, off the busy :00 mark; runs often start late
-  workflow_dispatch:       # "Run workflow" button for manual tests
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -23,4 +22,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add parking.csv
           git commit -m "data: $(date -Iminutes)"
+          git pull --rebase  # someone may have pushed while we ran
           git push

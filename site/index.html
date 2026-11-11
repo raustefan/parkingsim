@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uni Ulm parking</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root { --surface: #fcfcfb; --text: #0b0b0b; --muted: #52514e; --grid: #e6e5e1; --series: #2a78d6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --surface: #1a1a19; --text: #f0efec; --muted: #c3c2b7; --grid: #383835; --series: #3987e5; }
+  }
+  body { margin: 0 auto; max-width: 1200px; padding: 16px; font: 14px system-ui, sans-serif; background: var(--surface); color: var(--text); }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 12px; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+  #grid > div { height: 240px; }
+</style>
+</head>
+<body>
+<h1>Uni Ulm parking: free spaces by time of day</h1>
+<p><label>Lot <select id="lot"></select></label> · <span id="info">loading…</span></p>
+<div id="grid"></div>
+<script>
+// raw.githubusercontent.com serves the live CSV (cached ~5 min), so the site never needs redeploying for new data.
+const CSV = "https://raw.githubusercontent.com/raustefan/parkingsim/main/parking.csv";
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+fetch(CSV).then(r => r.text()).then(text => {
+  const rows = text.trim().split("\n").slice(1).map(l => {
+    const [time, , lot, capacity, free] = l.split(",");
+    return { time, lot, capacity: +capacity, free: free === "" ? null : +free };
+  }).filter(r => r.free !== null);
+
+  // Timestamps are Berlin local time ("2026-11-11T15:21:06+01:00"), so read hour and date straight from the text.
+  for (const r of rows) {
+    r.hour = +r.time.slice(11, 13) + +r.time.slice(14, 16) / 60;
+    r.day = (new Date(r.time.slice(0, 10) + "T00:00Z").getUTCDay() + 6) % 7;  // 0 = Monday
+  }
+
+  const sel = document.getElementById("lot");
+  for (const lot of [...new Set(rows.map(r => r.lot))]) sel.add(new Option(lot, lot));
+  sel.value = new URLSearchParams(location.search).get("lot") || sel.options[0].value;
+  sel.onchange = () => { history.replaceState(null, "", "?lot=" + sel.value); draw(); };
+
+  const grid = document.getElementById("grid");
+  const days = DAYS.map(() => grid.appendChild(document.createElement("div")));
+
+  function draw() {
+    const lotRows = rows.filter(r => r.lot === sel.value);
+    const cap = lotRows.length ? lotRows[lotRows.length - 1].capacity : 0;
+    document.getElementById("info").textContent =
+      `${cap} spaces · ${lotRows.length} samples · last update ${rows[rows.length - 1].time.slice(0, 16).replace("T", " ")}`;
+    DAYS.forEach((name, d) => {
+      const pts = lotRows.filter(r => r.day === d);
+      Plotly.react(days[d], [{
+        x: pts.map(r => r.hour), y: pts.map(r => r.free), customdata: pts.map(r => r.time.slice(0, 16).replace("T", " ")),
+        type: "scatter", mode: "markers",
+        marker: { size: 6, color: css("--series"), opacity: 0.5 },
+        hovertemplate: "%{customdata}<br>%{y} free<extra></extra>",
+      }], {
+        title: { text: `${name} (${pts.length})`, font: { size: 13, color: css("--text") }, x: 0.02 },
+        margin: { l: 40, r: 8, t: 30, b: 28 },
+        paper_bgcolor: css("--surface"), plot_bgcolor: css("--surface"),
+        font: { color: css("--muted"), size: 11 },
+        xaxis: { range: [0, 24], dtick: 3, gridcolor: css("--grid"), zeroline: false, ticksuffix: ":00" },
+        yaxis: { range: [0, cap * 1.05], gridcolor: css("--grid"), zeroline: false },
+        showlegend: false,
+      }, { displayModeBar: false, responsive: true });
+    });
+  }
+  draw();
+}).catch(e => document.getElementById("info").textContent = "Could not load data: " + e);
+</script>
+</body>
+</html>

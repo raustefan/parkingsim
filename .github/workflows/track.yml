@@ -2,7 +2,7 @@ name: track parking
 
 on:
   schedule:
-    - cron: "*/5 * * * *"  # GitHub's minimum; runs often start a few minutes late
+    - cron: "2-59/5 * * * *"  # every 5 min, off the busy :00 mark; runs often start late
   workflow_dispatch:       # "Run workflow" button for manual tests
 
 permissions:

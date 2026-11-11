@@ -3,29 +3,97 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Uni Ulm parking</title>
+<title>Parking at Uni Ulm</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
-  :root { --surface: #fcfcfb; --text: #0b0b0b; --muted: #52514e; --grid: #e6e5e1; --series: #2a78d6; }
-  @media (prefers-color-scheme: dark) {
-    :root { --surface: #1a1a19; --text: #f0efec; --muted: #c3c2b7; --grid: #383835; --series: #3987e5; }
+  :root {
+    --sign: #0e4c92;      /* traffic blue, like German parking signs */
+    --sign-edge: #f4f6f8;
+    --led-bg: #0b1626;
+    --led: #ffc233;       /* amber LED */
+    --full: #ff6a5c;
+    --concrete: #e9ecee;
+    --paper: #f7f8f9;
+    --ink: #22262b;
+    --muted: #5b636c;
+    --grid: #dde1e5;
+    --dot: #0e4c92;
   }
-  body { margin: 0 auto; max-width: 1200px; padding: 16px; font: 14px system-ui, sans-serif; background: var(--surface); color: var(--text); }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  p { color: var(--muted); margin: 0 0 12px; }
-  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
-  #grid > div { height: 240px; }
+  @media (prefers-color-scheme: dark) {
+    :root { --concrete: #15181c; --paper: #1d2126; --ink: #e8eaed; --muted: #a3abb4; --grid: #2e343b; --dot: #5b9be6; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--concrete); color: var(--ink); font: 400 16px/1.5 Barlow, system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px 20px 64px; }
+
+  /* The sign */
+  .sign {
+    background: var(--sign); color: var(--sign-edge); border-radius: 14px; padding: 20px 22px 22px;
+    box-shadow: inset 0 0 0 4px var(--sign), inset 0 0 0 7px var(--sign-edge);
+  }
+  .sign header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+  .p { flex: none; width: 56px; height: 56px; border-radius: 8px; background: var(--sign-edge); color: var(--sign);
+       display: grid; place-items: center; font: 700 44px/1 "Barlow Semi Condensed", sans-serif; }
+  .sign h1 { margin: 0; font: 700 clamp(26px, 4vw, 38px)/1.05 "Barlow Semi Condensed", sans-serif; letter-spacing: .01em; }
+  .sign header p { margin: 2px 0 0; opacity: .8; font-size: 15px; }
+  .lots { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .lots button {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 8px 8px 14px; border: 2px solid transparent; border-radius: 8px; cursor: pointer;
+    background: rgba(255,255,255,.07); color: inherit; font: 600 22px/1 "Barlow Semi Condensed", sans-serif;
+  }
+  .lots button:hover { background: rgba(255,255,255,.14); }
+  .lots button[aria-pressed="true"] { border-color: var(--sign-edge); background: rgba(255,255,255,.16); }
+  .lots button:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
+  .led {
+    min-width: 4ch; padding: 6px 10px; border-radius: 5px; background: var(--led-bg); text-align: right;
+    font: 700 24px/1 "Barlow Semi Condensed", sans-serif; font-variant-numeric: tabular-nums;
+    color: var(--led); text-shadow: 0 0 8px rgba(255,194,51,.55);
+  }
+  .led.full { color: var(--full); text-shadow: 0 0 8px rgba(255,106,92,.55); }
+
+  /* Charts */
+  .lot-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px; margin: 40px 0 16px; }
+  .lot-head h2 { margin: 0; font: 700 32px/1.1 "Barlow Semi Condensed", sans-serif; }
+  .lot-head p { margin: 0; color: var(--muted); }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .day { background: var(--paper); border-radius: 10px; padding: 14px 14px 6px; border: 2px solid transparent; }
+  .day.today { border-color: var(--dot); }
+  .day h3 { margin: 0 0 2px 4px; font: 600 19px/1.2 "Barlow Semi Condensed", sans-serif; }
+  .day h3 small { font: 400 14px Barlow, sans-serif; color: var(--muted); margin-left: 8px; }
+  .plot { height: 220px; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
+  footer a { color: inherit; }
 </style>
 </head>
 <body>
-<h1>Uni Ulm parking: free spaces by time of day</h1>
-<p><label>Lot <select id="lot"></select></label> · <span id="info">loading…</span></p>
-<div id="grid"></div>
+<main>
+  <section class="sign" aria-labelledby="title">
+    <header>
+      <div class="p" aria-hidden="true">P</div>
+      <div>
+        <h1 id="title">Parking at Uni Ulm</h1>
+        <p id="updated">Loading the latest counts…</p>
+      </div>
+    </header>
+    <ul class="lots" id="lots"></ul>
+  </section>
+
+  <div class="lot-head">
+    <h2 id="lot-name"></h2>
+    <p id="lot-info"></p>
+  </div>
+  <div id="grid"></div>
+  <footer>Each dot is one reading, taken about every 5 minutes. Data from <a href="http://tsu-app.rrooaarr.biz/front/mitarbeiter.html">the T.S.U. parking app</a>.</footer>
+</main>
 <script>
 // raw.githubusercontent.com serves the live CSV (cached ~5 min), so the site never needs redeploying for new data.
 const CSV = "https://raw.githubusercontent.com/raustefan/parkingsim/main/parking.csv";
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
 
 fetch(CSV).then(r => r.text()).then(text => {
   const rows = text.trim().split("\n").slice(1).map(l => {
@@ -38,40 +106,60 @@ fetch(CSV).then(r => r.text()).then(text => {
     r.hour = +r.time.slice(11, 13) + +r.time.slice(14, 16) / 60;
     r.day = (new Date(r.time.slice(0, 10) + "T00:00Z").getUTCDay() + 6) % 7;  // 0 = Monday
   }
+  const latest = new Map(rows.map(r => [r.lot, r]));  // later rows overwrite earlier ones
+  const last = rows[rows.length - 1];
+  $("updated").textContent = `Free spaces as of ${last.time.slice(11, 16)} on ${new Date(last.time).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}`;
 
-  const sel = document.getElementById("lot");
-  for (const lot of [...new Set(rows.map(r => r.lot))]) sel.add(new Option(lot, lot));
-  sel.value = new URLSearchParams(location.search).get("lot") || sel.options[0].value;
-  sel.onchange = () => { history.replaceState(null, "", "?lot=" + sel.value); draw(); };
+  let current = new URLSearchParams(location.search).get("lot");
+  if (!latest.has(current)) current = latest.keys().next().value;
 
-  const grid = document.getElementById("grid");
-  const days = DAYS.map(() => grid.appendChild(document.createElement("div")));
+  const buttons = [...latest.values()].map(r => {
+    const li = $("lots").appendChild(document.createElement("li"));
+    const b = li.appendChild(document.createElement("button"));
+    const full = r.free < Math.max(3, r.capacity * 0.05);
+    b.innerHTML = `<span>${r.lot}</span><span class="led${full ? " full" : ""}">${r.free}</span>`;
+    b.setAttribute("aria-label", `${r.lot}: ${r.free} of ${r.capacity} free`);
+    b.onclick = () => { current = r.lot; history.replaceState(null, "", "?lot=" + r.lot); draw(); };
+    b.dataset.lot = r.lot;
+    return b;
+  });
+
+  const today = (new Date().getDay() + 6) % 7;
+  const plots = DAYS.map((name, d) => {
+    const card = $("grid").appendChild(document.createElement("section"));
+    card.className = "day" + (d === today ? " today" : "");
+    card.innerHTML = `<h3>${name}<small></small></h3><div class="plot"></div>`;
+    return { count: card.querySelector("small"), plot: card.querySelector(".plot") };
+  });
 
   function draw() {
-    const lotRows = rows.filter(r => r.lot === sel.value);
-    const cap = lotRows.length ? lotRows[lotRows.length - 1].capacity : 0;
-    document.getElementById("info").textContent =
-      `${cap} spaces · ${lotRows.length} samples · last update ${rows[rows.length - 1].time.slice(0, 16).replace("T", " ")}`;
-    DAYS.forEach((name, d) => {
+    for (const b of buttons) b.setAttribute("aria-pressed", b.dataset.lot === current);
+    const lotRows = rows.filter(r => r.lot === current);
+    const cap = latest.get(current).capacity;
+    $("lot-name").textContent = current;
+    $("lot-info").textContent = `${cap} spaces, ${lotRows.length} readings so far`;
+    plots.forEach(({ count, plot }, d) => {
       const pts = lotRows.filter(r => r.day === d);
-      Plotly.react(days[d], [{
-        x: pts.map(r => r.hour), y: pts.map(r => r.free), customdata: pts.map(r => r.time.slice(0, 16).replace("T", " ")),
+      count.textContent = d === today ? "today" : pts.length ? `${pts.length} readings` : "no data yet";
+      Plotly.react(plot, [{
+        x: pts.map(r => r.hour), y: pts.map(r => r.free),
+        customdata: pts.map(r => new Date(r.time.slice(0, 10)).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + ", " + r.time.slice(11, 16)),
         type: "scatter", mode: "markers",
-        marker: { size: 6, color: css("--series"), opacity: 0.5 },
-        hovertemplate: "%{customdata}<br>%{y} free<extra></extra>",
+        marker: { size: 7, color: css("--dot"), opacity: 0.45, line: { width: 0 } },
+        hovertemplate: "%{customdata}<br><b>%{y}</b> free<extra></extra>",
       }], {
-        title: { text: `${name} (${pts.length})`, font: { size: 13, color: css("--text") }, x: 0.02 },
-        margin: { l: 40, r: 8, t: 30, b: 28 },
-        paper_bgcolor: css("--surface"), plot_bgcolor: css("--surface"),
-        font: { color: css("--muted"), size: 11 },
-        xaxis: { range: [0, 24], dtick: 3, gridcolor: css("--grid"), zeroline: false, ticksuffix: ":00" },
-        yaxis: { range: [0, cap * 1.05], gridcolor: css("--grid"), zeroline: false },
+        margin: { l: 38, r: 6, t: 6, b: 26 },
+        paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+        font: { family: "Barlow, sans-serif", color: css("--muted"), size: 12 },
+        hoverlabel: { font: { family: "Barlow, sans-serif" } },
+        xaxis: { range: [0, 24], tickvals: [0, 6, 9, 12, 15, 18, 24], ticktext: ["0", "6", "9", "12", "15", "18", "24 h"], gridcolor: css("--grid"), zeroline: false, fixedrange: true },
+        yaxis: { range: [0, cap * 1.05], gridcolor: css("--grid"), zeroline: false, fixedrange: true, nticks: 4 },
         showlegend: false,
       }, { displayModeBar: false, responsive: true });
     });
   }
   draw();
-}).catch(e => document.getElementById("info").textContent = "Could not load data: " + e);
+}).catch(e => $("updated").textContent = "Couldn't load the parking data (" + e.message + "). Reload the page to try again.");
 </script>
 </body>
 </html>

@@ -2,4 +2,4 @@
 
 # parkingsim
 
-Created in [T3 Code](https://t3.codes).
+Tracks current parking lot availability at ulm university.

@@ -54,6 +54,8 @@ M1 and M2 share one counter and are logged as `M1`. P23 has no counter and isn't
 | `rooms_in_use` | distinct rooms used by running entries |
 | `cancelled_today` | courses listed as cancelled for today |
 
+**`lectures_by_building.csv`**: the same numbers per building (`time`, `building`, `events_now`, `courses_now`, `rooms_in_use`), for a campus heatmap. Buildings with nothing running get no row, so a missing building means 0. `building` is stored as listed in the catalogue: usually a campus code like `N24` or `O27`, sometimes a name (`Chirurgie`, `Seminarraumgebäude`), an address, a combination like `O29 / LGM`, or empty.
+
 **`weather.csv`**: current weather at the campus from [Open-Meteo](https://open-meteo.com): `temperature_c`, `precipitation_mm`, `cloud_cover_pct`, `wind_kmh`, `weather_code` ([WMO code](https://open-meteo.com/en/docs#weather_variable_documentation)).
 
 **`transit.csv`**: departures at the stop *Universität Süd* from the [DING](https://www.ding.eu) departure board.

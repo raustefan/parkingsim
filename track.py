@@ -105,6 +105,10 @@ def lectures():
     running = [r for r in lsf_events(0) if r[0] <= hhmm < r[1]]  # "24:00" still sorts after any real time
     courses = [r for r in running if r[2]]  # entries with a course number are real courses, not room blocks
     rooms = {(r[4], r[5]) for r in running if r[5]}
+    # Same numbers per building (e.g. N24), for a campus heatmap. Buildings with nothing running get no row.
+    append("lectures_by_building.csv", ["time", "building", "events_now", "courses_now", "rooms_in_use"], [
+        [now, b, sum(r[4] == b for r in running), sum(r[4] == b for r in courses), sum(rb == b for rb, _ in rooms)]
+        for b in sorted({r[4] for r in running})])
     return [len(running), len(courses), len(rooms), len(lsf_events(1))]
 
 

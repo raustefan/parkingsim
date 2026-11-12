@@ -26,6 +26,7 @@ now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 rows = []
 for cid, (name, mx) in lots.items():
     try:
+        # Despite the column name, the API returns *occupied* spaces; free = capacity - this.
         free = int(get(f"soap.php?counterid={cid}").strip())
     except (OSError, ValueError):
         free = ""  # keep the row so gaps are visible

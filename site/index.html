@@ -245,7 +245,7 @@ function stamp(r) {
 
 const FILES = ["parking.csv", "wifi.csv", "lectures_by_building.csv", ...new Set(EXTRA.map(e => e.file))];
 // buildings.json: outlines of the coded campus buildings (N24, O27, …), taken once from OpenStreetMap.
-Promise.all([...FILES.map(csv), fetch("buildings.json").then(r => r.json()).catch(() => ({ features: [] }))]).then(loaded => {
+Promise.all([...FILES.map(csv), fetch("buildings.json?v=2").then(r => r.json()).catch(() => ({ features: [] }))]).then(loaded => {
   const data = Object.fromEntries(FILES.map((f, i) => [f, loaded[i]]));
   const geo = loaded.at(-1);
   // The parking CSV's "free" column actually holds *occupied* spaces (that's what the API returns), so convert here.
@@ -355,8 +355,8 @@ Promise.all([...FILES.map(csv), fetch("buildings.json").then(r => r.json()).catc
   const CODE = /[NOMW]\d{2}(?:\.\d)?/g;  // "O29 / LGM" counts for O29
   // Catalogue building name -> map feature. Uni West is "43", "45", "47"; "TTU" is M28.
   const PLACE = {};
-  for (const f of geo.features) for (const n of [f.id, ...f.properties.aliases]) PLACE[n] = f.id;
-  const LABEL = Object.fromEntries(geo.features.map(f => [f.id, /^\d+$/.test(f.id) ? `${f.id} (Uni West)` : f.properties.label]));
+  for (const f of geo.features) for (const n of [f.id, ...(f.properties.aliases ?? [])]) PLACE[n] = f.id;
+  const LABEL = Object.fromEntries(geo.features.map(f => [f.id, /^\d+$/.test(f.id) ? `${f.id} (Uni West)` : f.properties.label ?? f.id]));
   const placesOf = b => PLACE[b] ? [PLACE[b]] : (b.match(CODE)?.map(c => PLACE[c] ?? c) ?? [b || "No building given"]);
   const byBuilding = data["lectures_by_building.csv"].map(r => stamp({ ...r }));
   const lectureRuns = data["lectures.csv"].map(r => stamp({ time: r.time }));
@@ -412,11 +412,11 @@ Promise.all([...FILES.map(csv), fetch("buildings.json").then(r => r.json()).catc
     Plotly.react("campus-map", [{
       type: "choroplethmapbox", geojson: geo, featureidkey: "id", locations: ids, z: ids.map(c => vals[c] ?? 0),
       zmin: 0, zmax, colorscale: RAMP, marker: { opacity: 0.88, line: { width: 1, color: css("--paper") } },
-      customdata: geo.features.map(f => [f.properties.label, f.properties.name]), hovertemplate: `<b>%{customdata[0]}</b> %{customdata[1]}<br>%{z} ${METRIC[metric]}<extra></extra>`,
+      customdata: geo.features.map(f => [f.properties.label ?? f.id, f.properties.name]), hovertemplate: `<b>%{customdata[0]}</b> %{customdata[1]}<br>%{z} ${METRIC[metric]}<extra></extra>`,
       colorbar: { thickness: 10, len: 0.5, x: 0.98, xanchor: "right", outlinewidth: 0, tickfont: { family: "Barlow, sans-serif", color: css("--muted") }, bgcolor: "rgba(0,0,0,0)" },
     }, {
       type: "scattermapbox", mode: "text", lon: geo.features.map(f => f.properties.centre[0]), lat: geo.features.map(f => f.properties.centre[1]),
-      text: geo.features.map(f => f.properties.label), textfont: { family: "Barlow Semi Condensed, sans-serif", size: 12, color: dark ? "#f4f6f8" : "#22262b" }, hoverinfo: "skip",
+      text: geo.features.map(f => f.properties.label ?? f.id), textfont: { family: "Barlow Semi Condensed, sans-serif", size: 12, color: dark ? "#f4f6f8" : "#22262b" }, hoverinfo: "skip",
     }], {
       mapbox: { style: dark ? "carto-darkmatter" : "carto-positron", center: { lon: centre[0], lat: centre[1] }, zoom: fitZoom() },
       margin: { l: 0, r: 0, t: 0, b: 0 }, paper_bgcolor: "rgba(0,0,0,0)", showlegend: false,
@@ -450,7 +450,7 @@ Promise.all([...FILES.map(csv), fetch("buildings.json").then(r => r.json()).catc
       x.key.innerHTML = keyFor(pts);
       Plotly.react(x.plot, traces(pts, r => +r.v.toFixed(2), css(x.e.color), x.e.unit), layout(x.range[1], x.range[0]), config);
     }
-    heat();
+    try { heat(); } catch (e) { $("heat-sub").textContent = "Couldn't draw the campus map (" + e.message + ")."; console.error(e); }
   }
   draw();
 }).catch(e => $("updated").textContent = "Couldn't load the data (" + e.message + "). Reload the page to try again.");

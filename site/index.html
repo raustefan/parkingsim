@@ -353,9 +353,18 @@ Promise.all([...FILES.map(csv), fetch("buildings.json").then(r => r.json()).catc
 
   // Campus heatmap: one run (time of day) on the latest date of the selected weekday.
   const CODE = /[NOMW]\d{2}(?:\.\d)?/g;  // "O29 / LGM" counts for O29
+  // Catalogue building name -> map feature. Uni West is "43", "45", "47"; "TTU" is M28.
+  const PLACE = {};
+  for (const f of geo.features) for (const n of [f.id, ...f.properties.aliases]) PLACE[n] = f.id;
+  const LABEL = Object.fromEntries(geo.features.map(f => [f.id, /^\d+$/.test(f.id) ? `${f.id} (Uni West)` : f.properties.label]));
+  const placesOf = b => PLACE[b] ? [PLACE[b]] : (b.match(CODE)?.map(c => PLACE[c] ?? c) ?? [b || "No building given"]);
   const byBuilding = data["lectures_by_building.csv"].map(r => stamp({ ...r }));
   const lectureRuns = data["lectures.csv"].map(r => stamp({ time: r.time }));
-  const centre = geo.features.reduce((a, f) => [a[0] + f.properties.centre[0] / geo.features.length, a[1] + f.properties.centre[1] / geo.features.length], [0, 0]);
+  // Fit the map to all buildings: centre of their bounds, zoom from the span and the map's width.
+  const lons = geo.features.flatMap(f => f.geometry.coordinates.flat(2).map(p => p[0]));
+  const lats = geo.features.flatMap(f => f.geometry.coordinates.flat(2).map(p => p[1]));
+  const centre = [(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+  const fitZoom = () => Math.min(16.5, Math.log2(360 * ($("campus-map").clientWidth || 700) / 256 / ((Math.max(...lons) - Math.min(...lons)) * 1.15 || 0.01)));
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;
   const RAMP = dark ? [[0, "#23303e"], [0.25, "#184f95"], [0.5, "#2a78d6"], [0.75, "#6da7ec"], [1, "#cde2fb"]]
                     : [[0, "#e4e9ef"], [0.25, "#86b6ef"], [0.5, "#3987e5"], [0.75, "#1c5cab"], [1, "#104281"]];
@@ -397,20 +406,19 @@ Promise.all([...FILES.map(csv), fetch("buildings.json").then(r => r.json()).catc
 
     const vals = {};
     for (const r of byBuilding.filter(r => r.time === t)) {
-      const codes = r.building.match(CODE) ?? [r.building || "No building given"];
-      for (const c of codes) vals[c] = (vals[c] ?? 0) + +r[metric];
+      for (const c of placesOf(r.building)) vals[c] = (vals[c] ?? 0) + +r[metric];
     }
     const ids = geo.features.map(f => f.id), zmax = peak(metric);
     Plotly.react("campus-map", [{
       type: "choroplethmapbox", geojson: geo, featureidkey: "id", locations: ids, z: ids.map(c => vals[c] ?? 0),
       zmin: 0, zmax, colorscale: RAMP, marker: { opacity: 0.88, line: { width: 1, color: css("--paper") } },
-      customdata: geo.features.map(f => f.properties.name), hovertemplate: `<b>%{location}</b> %{customdata}<br>%{z} ${METRIC[metric]}<extra></extra>`,
+      customdata: geo.features.map(f => [f.properties.label, f.properties.name]), hovertemplate: `<b>%{customdata[0]}</b> %{customdata[1]}<br>%{z} ${METRIC[metric]}<extra></extra>`,
       colorbar: { thickness: 10, len: 0.5, x: 0.98, xanchor: "right", outlinewidth: 0, tickfont: { family: "Barlow, sans-serif", color: css("--muted") }, bgcolor: "rgba(0,0,0,0)" },
     }, {
       type: "scattermapbox", mode: "text", lon: geo.features.map(f => f.properties.centre[0]), lat: geo.features.map(f => f.properties.centre[1]),
-      text: ids, textfont: { family: "Barlow Semi Condensed, sans-serif", size: 12, color: dark ? "#f4f6f8" : "#22262b" }, hoverinfo: "skip",
+      text: geo.features.map(f => f.properties.label), textfont: { family: "Barlow Semi Condensed, sans-serif", size: 12, color: dark ? "#f4f6f8" : "#22262b" }, hoverinfo: "skip",
     }], {
-      mapbox: { style: dark ? "carto-darkmatter" : "carto-positron", center: { lon: centre[0], lat: centre[1] }, zoom: 16.4 },
+      mapbox: { style: dark ? "carto-darkmatter" : "carto-positron", center: { lon: centre[0], lat: centre[1] }, zoom: fitZoom() },
       margin: { l: 0, r: 0, t: 0, b: 0 }, paper_bgcolor: "rgba(0,0,0,0)", showlegend: false,
       hoverlabel: { font: { family: "Barlow, sans-serif" } },
     }, { displayModeBar: false, responsive: true, scrollZoom: false });
@@ -419,7 +427,7 @@ Promise.all([...FILES.map(csv), fetch("buildings.json").then(r => r.json()).catc
     const list = Object.entries(vals).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
     const top = Math.max(1, ...list.map(([, v]) => v));
     $("heat-list").innerHTML = list.length
-      ? list.map(([c, v]) => `<li><span title="${c}">${c}</span><span class="bar"><i style="width:${(100 * v / top).toFixed(0)}%"></i></span><b>${v}</b></li>`).join("")
+      ? list.map(([c, v]) => `<li><span title="${c}">${LABEL[c] ?? c}</span><span class="bar"><i style="width:${(100 * v / top).toFixed(0)}%"></i></span><b>${v}</b></li>`).join("")
       : `<p>Nothing on at ${t.slice(11, 16)}.</p>`;
   }
 

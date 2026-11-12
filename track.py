@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Log parking occupancy (parking.csv) and Wi-Fi client counts (wifi.csv) at Uni Ulm. Run from cron."""
-import csv, datetime, json, pathlib, re, urllib.request
+import csv, datetime, json, pathlib, re, time, urllib.request
 
 BASE = "http://tsu-app.rrooaarr.biz/front/"
 HERE = pathlib.Path(__file__).parent
@@ -10,8 +10,14 @@ WIFI_PANELS = {"eduroam": 7, "welcome": 9}
 
 
 def get(path):
-    with urllib.request.urlopen(BASE + path, timeout=10) as r:
-        return r.read().decode("utf-8", "replace")
+    for attempt in (1, 2):  # the parking server sometimes drops out for a few seconds
+        try:
+            with urllib.request.urlopen(BASE + path, timeout=10) as r:
+                return r.read().decode("utf-8", "replace")
+        except OSError:
+            if attempt == 2:
+                raise
+            time.sleep(5)
 
 
 def append(name, header, rows):
@@ -35,7 +41,13 @@ def wifi_clients(panel):
 # Lot list comes from the page itself, so new/renamed lots are picked up automatically.
 # Parsed per <li> because some lots (P23) have no counter. M1/M2 share one counter.
 lots = {}
-for li in get("mitarbeiter.html").split("<li")[1:]:
+try:
+    page = get("mitarbeiter.html")
+except OSError as e:
+    # Still log Wi-Fi below. "::warning::" shows up as a yellow note on the GitHub run.
+    print(f"::warning::parking site unreachable, no parking rows this run: {e}")
+    page = ""
+for li in page.split("<li")[1:]:
     m = re.search(r'p-number">\s*([^<]+?)\s*<.*?cid="(\d+)" max="(\d+)"', li, re.S)
     if m:
         name, cid, mx = m.groups()

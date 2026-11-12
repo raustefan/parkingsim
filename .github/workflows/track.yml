@@ -20,7 +20,7 @@ jobs:
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add parking.csv
+          git add parking.csv wifi.csv
           git commit -m "data: $(date -Iminutes)"
           git pull --rebase  # someone may have pushed while we ran
           git push

@@ -22,9 +22,11 @@
     --grid: #dde1e5;
     --dot: #0e4c92;
     --wifi: #138a5f;
+    --c-lectures: #d95926; --c-traffic: #6250d6; --c-weather: #c98500; --c-transit: #008300; --c-uplink: #d55181; --c-firewall: #5b636c;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --concrete: #15181c; --paper: #1d2126; --ink: #e8eaed; --muted: #a3abb4; --grid: #2e343b; --dot: #5b9be6; --wifi: #3cc48c; }
+    :root { --concrete: #15181c; --paper: #1d2126; --ink: #e8eaed; --muted: #a3abb4; --grid: #2e343b; --dot: #5b9be6; --wifi: #3cc48c;
+            --c-lectures: #eb6834; --c-traffic: #9085e9; --c-weather: #eda100; --c-transit: #3aa83a; --c-uplink: #e87ba4; --c-firewall: #a3abb4; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--concrete); color: var(--ink); font: 400 16px/1.5 Barlow, system-ui, sans-serif; }
@@ -95,6 +97,13 @@
                       background: var(--c); vertical-align: -1px; }
   .key .old::before { opacity: .35; }
   .plot { height: 300px; }
+  .section { margin: 40px 0 4px; font: 700 28px/1.1 "Barlow Semi Condensed", sans-serif; }
+  .section + p { margin: 0 0 16px; color: var(--muted); }
+  .extras { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .extras .plot { height: 190px; }
+  .chart header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .now { font: 700 26px/1 "Barlow Semi Condensed", sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .now small { font: 500 14px Barlow, sans-serif; color: var(--muted); margin-left: 4px; }
   footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
   footer a { color: inherit; }
 </style>
@@ -142,7 +151,14 @@
       <div class="plot" id="wifi-plot"></div>
     </section>
   </div>
-  <footer>Readings are taken about every 5 minutes. Parking data from <a href="http://tsu-app.rrooaarr.biz/front/mitarbeiter.html">the T.S.U. parking app</a>, Wi-Fi data from <a href="https://grafana.uni-ulm.de/grafana/public-dashboards/c7d386879fae4b97b4dac792b7854d1d">the kiz network dashboard</a>.</footer>
+  <h2 class="section">Campus context</h2>
+  <p>What else was going on at the same times, for the same weekday.</p>
+  <div class="extras" id="extras"></div>
+
+  <footer>Readings are taken about every 5 minutes. Sources: <a href="http://tsu-app.rrooaarr.biz/front/mitarbeiter.html">T.S.U. parking app</a>,
+    <a href="https://grafana.uni-ulm.de/grafana/public-dashboards/c7d386879fae4b97b4dac792b7854d1d">kiz network dashboard</a>,
+    <a href="https://campusonline.uni-ulm.de/qislsf/rds?state=user&type=0">course catalogue</a> (events of the day),
+    <a href="https://open-meteo.com">Open-Meteo</a> (weather) and <a href="https://www.ding.eu">DING</a> (departures at Universität Süd).</footer>
 </main>
 <script>
 // raw.githubusercontent.com serves the live CSVs (cached ~5 min), so the site never needs redeploying for new data.
@@ -155,7 +171,28 @@ const named = lot => NAMES[lot] ? `${NAMES[lot]} (${lot})` : lot;
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const $ = id => document.getElementById(id);
-const csv = name => fetch(RAW + name).then(r => r.ok ? r.text() : "").then(t => t.trim().split("\n").slice(1).filter(Boolean).map(l => l.split(",")));
+// Each CSV row becomes an object keyed by the header. A missing file (no data yet) gives no rows.
+const csv = name => fetch(RAW + name).then(r => r.ok ? r.text() : "").then(t => {
+  const [head = "", ...lines] = t.trim().split(/\r?\n/), keys = head.split(",");
+  return lines.filter(Boolean).map(l => Object.fromEntries(l.split(",").map((v, i) => [keys[i], v])));
+});
+const WEATHER_CODES = [[0, "clear"], [3, "cloudy"], [48, "fog"], [57, "drizzle"], [67, "rain"], [77, "snow"], [82, "showers"], [99, "thunderstorm"]];
+const sky = code => WEATHER_CODES.find(([max]) => code <= max)?.[1] ?? "";
+// Context charts below the main ones: one per tracked source, all following the weekday switcher.
+const EXTRA = [
+  { file: "lectures.csv", title: "Courses running", color: "--c-lectures", unit: "courses", y: r => r.courses_now,
+    now: r => `${r.courses_now}<small>courses, ${r.events_now} events in ${r.rooms_in_use} rooms</small>` },
+  { file: "traffic.csv", title: "Wi-Fi traffic", color: "--c-traffic", unit: "Mb/s", y: r => (+r.eduroam_bps + +r.welcome_bps) / 1e6,
+    now: r => `${((+r.eduroam_bps + +r.welcome_bps) / 1e6).toFixed(1)}<small>Mb/s</small>` },
+  { file: "weather.csv", title: "Temperature", color: "--c-weather", unit: "°C", y: r => r.temperature_c,
+    now: r => `${(+r.temperature_c).toFixed(1)} °C<small>${sky(+r.weather_code)}${+r.precipitation_mm ? `, ${r.precipitation_mm} mm` : ""}</small>` },
+  { file: "transit.csv", title: "Tram and bus delay at Universität Süd", color: "--c-transit", unit: "min average delay", y: r => r.avg_delay_min,
+    now: r => `${r.avg_delay_min === "" ? "–" : (+r.avg_delay_min).toFixed(1)}<small>min, ${r.departures_30min} departures in 30 min</small>` },
+  { file: "traffic.csv", title: "Uni internet uplink", color: "--c-uplink", unit: "Gb/s", y: r => (+r.uplink_stg_bps + +r.uplink_ka_bps) / 1e9,
+    now: r => `${((+r.uplink_stg_bps + +r.uplink_ka_bps) / 1e9).toFixed(2)}<small>Gb/s</small>` },
+  { file: "firewall.csv", title: "Clients behind kizbox01", color: "--c-firewall", unit: "clients", y: r => r.kizbox01,
+    now: r => `${r.kizbox01}<small>clients</small>` },
+];
 const fmtDate = (d, opts) => new Date(d + "T12:00").toLocaleDateString("en-GB", opts);
 
 // Timestamps are Berlin local time ("2026-11-11T15:21:06+01:00"), so read hour and date straight from the text.
@@ -166,13 +203,15 @@ function stamp(r) {
   return r;
 }
 
-Promise.all([csv("parking.csv"), csv("wifi.csv")]).then(([parkRaw, wifiRaw]) => {
+const FILES = ["parking.csv", "wifi.csv", ...new Set(EXTRA.map(e => e.file))];
+Promise.all(FILES.map(csv)).then(loaded => {
+  const data = Object.fromEntries(FILES.map((f, i) => [f, loaded[i]]));
   // The parking CSV's "free" column actually holds *occupied* spaces (that's what the API returns), so convert here.
   // Counters can drift above capacity; clamp so the sign never shows negative free spaces.
-  const rows = parkRaw.filter(c => c[4] !== "").map(([time, , lot, capacity, occupied]) =>
-    stamp({ time, lot, capacity: +capacity, free: Math.max(0, capacity - occupied) }));
-  const wifi = wifiRaw.filter(c => c[1] !== "" && c[2] !== "").map(([time, eduroam, welcome]) =>
-    stamp({ time, eduroam: +eduroam, welcome: +welcome, total: +eduroam + +welcome }));
+  const rows = data["parking.csv"].filter(c => c.free !== "").map(c =>
+    stamp({ time: c.time, lot: c.lot, capacity: +c.capacity, free: Math.max(0, c.capacity - c.free) }));
+  const wifi = data["wifi.csv"].filter(c => c.eduroam !== "" && c.welcome !== "").map(c =>
+    stamp({ time: c.time, eduroam: +c.eduroam, welcome: +c.welcome, total: +c.eduroam + +c.welcome }));
 
   const last = rows[rows.length - 1];
   $("updated").textContent = `Live counts from ${last.time.slice(11, 16)} on ${fmtDate(last.date, { weekday: "long", day: "numeric", month: "long" })}`;
@@ -247,16 +286,28 @@ Promise.all([csv("parking.csv"), csv("wifi.csv")]).then(([parkRaw, wifiRaw]) => 
     const label = newest === new Date().toLocaleDateString("sv-SE") ? "Today" : fmtDate(newest, { day: "numeric", month: "short" });
     return `<span>${label}</span>` + (dates.length ? `<span class="old">${dates.length} earlier ${DAYS[day]}${dates.length > 1 ? "s" : ""}</span>` : "");
   }
-  const layout = yMax => ({
+  const layout = (yMax, yMin = 0) => ({
     margin: { l: 44, r: 8, t: 10, b: 28 },
     paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
     font: { family: "Barlow, sans-serif", color: css("--muted"), size: 12 },
     hoverlabel: { font: { family: "Barlow, sans-serif" } },
     xaxis: { range: [0, 24], tickvals: [0, 6, 9, 12, 15, 18, 24], ticktext: ["0", "6", "9", "12", "15", "18", "24 h"], gridcolor: css("--grid"), zeroline: false, fixedrange: true },
-    yaxis: { range: [0, yMax], gridcolor: css("--grid"), zeroline: false, fixedrange: true, nticks: 5 },
+    yaxis: { range: [yMin, yMax], gridcolor: css("--grid"), zeroline: false, fixedrange: true, nticks: 5 },
     showlegend: false,
   });
   const config = { displayModeBar: false, responsive: true };
+
+  // Context cards. Rows whose value is missing are dropped; the y range covers every day, so days compare.
+  const extras = EXTRA.map(e => {
+    const pts = data[e.file].map(r => ({ ...r, v: e.y(r) })).filter(r => r.v !== "" && Number.isFinite(+r.v)).map(r => stamp({ ...r, v: +r.v }));
+    const vals = pts.map(r => r.v), lo = Math.min(0, ...vals), hi = Math.max(1, ...vals);
+    const card = $("extras").appendChild(document.createElement("section"));
+    card.className = "chart";
+    card.style.setProperty("--c", `var(${e.color})`);
+    const last = data[e.file].at(-1);
+    card.innerHTML = `<header><h3>${e.title}</h3><div class="now">${last ? e.now(last) : "–"}</div></header><div class="key"></div><div class="plot"></div>`;
+    return { e, pts, range: [lo < 0 ? lo * 1.1 : 0, hi * 1.08], key: card.querySelector(".key"), plot: card.querySelector(".plot") };
+  });
 
   function draw() {
     for (const b of lotButtons) b.setAttribute("aria-pressed", b.dataset.lot === lot);
@@ -271,6 +322,12 @@ Promise.all([csv("parking.csv"), csv("wifi.csv")]).then(([parkRaw, wifiRaw]) => 
     $("wifi-chart-title").textContent = `Wi-Fi devices on ${DAYS[day]}s`;
     $("wifi-key").innerHTML = keyFor(net);
     Plotly.react("wifi-plot", traces(net, r => r.total, css("--wifi"), "devices"), layout(wifiMax), config);
+
+    for (const x of extras) {
+      const pts = x.pts.filter(r => r.day === day);
+      x.key.innerHTML = keyFor(pts);
+      Plotly.react(x.plot, traces(pts, r => +r.v.toFixed(2), css(x.e.color), x.e.unit), layout(x.range[1], x.range[0]), config);
+    }
   }
   draw();
 }).catch(e => $("updated").textContent = "Couldn't load the data (" + e.message + "). Reload the page to try again.");

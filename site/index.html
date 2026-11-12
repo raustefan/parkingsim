@@ -96,7 +96,7 @@ const CSV = "https://raw.githubusercontent.com/raustefan/parkingsim/main/parking
 // Lot names as shown in the official app. Lots without a name show just their code.
 // M1 and M2 share one counter, which the page labels M1.
 const NAMES = { P09: "Manfred-Börner", P10: "Uni West", P20: "Parkhaus Mitte", P23: "Externer Parkplatz", P24: "Uni Nord",
-                P41: "Helmholtz", M1: "HNO Klinik & Klinik Michelsberg" };
+                P41: "Helmholtz", M1: "Klinik Michelsberg" };
 const named = lot => NAMES[lot] ? `${NAMES[lot]} (${lot})` : lot;
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();

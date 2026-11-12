@@ -38,12 +38,14 @@
        display: grid; place-items: center; font: 700 44px/1 "Barlow Semi Condensed", sans-serif; }
   .sign h1 { margin: 0; font: 700 clamp(26px, 4vw, 38px)/1.05 "Barlow Semi Condensed", sans-serif; letter-spacing: .01em; }
   .sign header p { margin: 2px 0 0; opacity: .8; font-size: 15px; }
-  .lots { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .lots { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
   .lots button {
     width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 8px 8px 8px 14px; border: 2px solid transparent; border-radius: 8px; cursor: pointer;
     background: rgba(255,255,255,.07); color: inherit; font: 600 22px/1 "Barlow Semi Condensed", sans-serif;
   }
+  .lots button > span:first-child { display: flex; flex-direction: column; gap: 3px; text-align: left; }
+  .lots small { font: 500 14px/1.2 Barlow, sans-serif; opacity: .8; }
   .lots button:hover { background: rgba(255,255,255,.14); }
   .lots button[aria-pressed="true"] { border-color: var(--sign-edge); background: rgba(255,255,255,.16); }
   .lots button:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
@@ -91,6 +93,11 @@
 <script>
 // raw.githubusercontent.com serves the live CSV (cached ~5 min), so the site never needs redeploying for new data.
 const CSV = "https://raw.githubusercontent.com/raustefan/parkingsim/main/parking.csv";
+// Lot names as shown in the official app. Lots without a name show just their code.
+// M1 and M2 share one counter, which the page labels M1.
+const NAMES = { P09: "Manfred-Börner", P10: "Uni West", P20: "Parkhaus Mitte", P23: "Externer Parkplatz", P24: "Uni Nord",
+                P41: "Helmholtz", M1: "HNO Klinik & Klinik Michelsberg" };
+const named = lot => NAMES[lot] ? `${NAMES[lot]} (${lot})` : lot;
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const $ = id => document.getElementById(id);
@@ -119,8 +126,8 @@ fetch(CSV).then(r => r.text()).then(text => {
     const li = $("lots").appendChild(document.createElement("li"));
     const b = li.appendChild(document.createElement("button"));
     const full = r.free < Math.max(3, r.capacity * 0.05);
-    b.innerHTML = `<span>${r.lot}</span><span class="led${full ? " full" : ""}">${r.free}</span>`;
-    b.setAttribute("aria-label", `${r.lot}: ${r.free} of ${r.capacity} free`);
+    b.innerHTML = `<span>${r.lot}${NAMES[r.lot] ? `<small>${NAMES[r.lot]}</small>` : ""}</span><span class="led${full ? " full" : ""}">${r.free}</span>`;
+    b.setAttribute("aria-label", `${named(r.lot)}: ${r.free} of ${r.capacity} free`);
     b.onclick = () => { current = r.lot; history.replaceState(null, "", "?lot=" + r.lot); draw(); };
     b.dataset.lot = r.lot;
     return b;
@@ -138,7 +145,7 @@ fetch(CSV).then(r => r.text()).then(text => {
     for (const b of buttons) b.setAttribute("aria-pressed", b.dataset.lot === current);
     const lotRows = rows.filter(r => r.lot === current);
     const cap = latest.get(current).capacity;
-    $("lot-name").textContent = current;
+    $("lot-name").textContent = named(current);
     $("lot-info").textContent = `${cap} spaces, ${lotRows.length} readings so far`;
     plots.forEach(({ count, plot }, d) => {
       const pts = lotRows.filter(r => r.day === d);

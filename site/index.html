@@ -101,6 +101,25 @@
   .section + p { margin: 0 0 16px; color: var(--muted); }
   .extras { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
   .extras .plot { height: 190px; }
+
+  /* Campus heatmap */
+  .heat { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .heat { grid-template-columns: 1fr; } }
+  #campus-map { height: 440px; border-radius: 8px; overflow: hidden; }
+  .heat-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 4px 4px; }
+  .heat-controls input[type=range] { flex: 1; min-width: 160px; accent-color: var(--sign); }
+  .heat-controls output { font: 700 22px/1 "Barlow Semi Condensed", sans-serif; font-variant-numeric: tabular-nums; min-width: 3.2em; }
+  .play { width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--sign); color: var(--sign-edge); cursor: pointer; font-size: 16px; }
+  .seg { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--concrete); }
+  .seg button { border: 0; border-radius: 8px; padding: 6px 12px; background: transparent; color: inherit; cursor: pointer; font: 600 16px "Barlow Semi Condensed", sans-serif; }
+  .seg button[aria-pressed="true"] { background: var(--sign); color: var(--sign-edge); }
+  .heat-list ol { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 7px; }
+  .heat-list li { display: grid; grid-template-columns: 7.5em 1fr 2.2em; gap: 10px; align-items: center; font-size: 15px; }
+  .heat-list li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .heat-list .bar { height: 8px; border-radius: 4px; background: var(--concrete); overflow: hidden; }
+  .heat-list .bar i { display: block; height: 100%; border-radius: 4px; background: var(--dot); }
+  .heat-list b { text-align: right; font-variant-numeric: tabular-nums; }
+  .heat-list p { color: var(--muted); margin: 10px 0 0; }
   .chart header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   .now { font: 700 26px/1 "Barlow Semi Condensed", sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .now small { font: 500 14px Barlow, sans-serif; color: var(--muted); margin-left: 4px; }
@@ -151,6 +170,27 @@
       <div class="plot" id="wifi-plot"></div>
     </section>
   </div>
+  <h2 class="section">Lectures across campus</h2>
+  <p id="heat-sub">Rooms in use per building.</p>
+  <div class="heat">
+    <section class="chart">
+      <div id="campus-map" role="img" aria-label="Campus map, buildings coloured by how many rooms are in use"></div>
+      <div class="heat-controls">
+        <button class="play" id="play" aria-label="Play through the day">▶</button>
+        <input type="range" id="heat-time" min="0" max="0" value="0" aria-label="Time of day">
+        <output id="heat-label" for="heat-time">–</output>
+        <div class="seg" role="group" aria-label="Measure">
+          <button data-m="rooms_in_use" aria-pressed="true">Rooms in use</button>
+          <button data-m="courses_now" aria-pressed="false">Courses</button>
+        </div>
+      </div>
+    </section>
+    <aside class="chart heat-list">
+      <h3>Busiest buildings</h3>
+      <ol id="heat-list"></ol>
+    </aside>
+  </div>
+
   <h2 class="section">Campus context</h2>
   <p>What else was going on at the same times, for the same weekday.</p>
   <div class="extras" id="extras"></div>
@@ -158,7 +198,7 @@
   <footer>Readings are taken about every 5 minutes. Sources: <a href="http://tsu-app.rrooaarr.biz/front/mitarbeiter.html">T.S.U. parking app</a>,
     <a href="https://grafana.uni-ulm.de/grafana/public-dashboards/c7d386879fae4b97b4dac792b7854d1d">kiz network dashboard</a>,
     <a href="https://campusonline.uni-ulm.de/qislsf/rds?state=user&type=0">course catalogue</a> (events of the day),
-    <a href="https://open-meteo.com">Open-Meteo</a> (weather) and <a href="https://www.ding.eu">DING</a> (departures at Universität Süd).</footer>
+    <a href="https://open-meteo.com">Open-Meteo</a> (weather) and <a href="https://www.ding.eu">DING</a> (departures at Universität Süd). Building outlines © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</footer>
 </main>
 <script>
 // raw.githubusercontent.com serves the live CSVs (cached ~5 min), so the site never needs redeploying for new data.
@@ -203,9 +243,11 @@ function stamp(r) {
   return r;
 }
 
-const FILES = ["parking.csv", "wifi.csv", ...new Set(EXTRA.map(e => e.file))];
-Promise.all(FILES.map(csv)).then(loaded => {
+const FILES = ["parking.csv", "wifi.csv", "lectures_by_building.csv", ...new Set(EXTRA.map(e => e.file))];
+// buildings.json: outlines of the coded campus buildings (N24, O27, …), taken once from OpenStreetMap.
+Promise.all([...FILES.map(csv), fetch("buildings.json").then(r => r.json()).catch(() => ({ features: [] }))]).then(loaded => {
   const data = Object.fromEntries(FILES.map((f, i) => [f, loaded[i]]));
+  const geo = loaded.at(-1);
   // The parking CSV's "free" column actually holds *occupied* spaces (that's what the API returns), so convert here.
   // Counters can drift above capacity; clamp so the sign never shows negative free spaces.
   const rows = data["parking.csv"].filter(c => c.free !== "").map(c =>
@@ -255,11 +297,11 @@ Promise.all(FILES.map(csv)).then(loaded => {
     b.onclick = () => go(d);
     return b;
   });
-  const go = d => { day = (d + 7) % 7; save(); draw(); };
+  const go = d => { day = (d + 7) % 7; runIndex = null; stopPlay(); save(); draw(); };
   $("prev").onclick = () => go(day - 1);
   $("next").onclick = () => go(day + 1);
   document.addEventListener("keydown", e => {
-    if (e.target.closest?.(".lots")) return;
+    if (e.target.closest?.(".lots, input")) return;
     if (e.key === "ArrowLeft") go(day - 1);
     if (e.key === "ArrowRight") go(day + 1);
   });
@@ -309,6 +351,78 @@ Promise.all(FILES.map(csv)).then(loaded => {
     return { e, pts, range: [lo < 0 ? lo * 1.1 : 0, hi * 1.08], key: card.querySelector(".key"), plot: card.querySelector(".plot") };
   });
 
+  // Campus heatmap: one run (time of day) on the latest date of the selected weekday.
+  const CODE = /[NOMW]\d{2}(?:\.\d)?/g;  // "O29 / LGM" counts for O29
+  const byBuilding = data["lectures_by_building.csv"].map(r => stamp({ ...r }));
+  const lectureRuns = data["lectures.csv"].map(r => stamp({ time: r.time }));
+  const centre = geo.features.reduce((a, f) => [a[0] + f.properties.centre[0] / geo.features.length, a[1] + f.properties.centre[1] / geo.features.length], [0, 0]);
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const RAMP = dark ? [[0, "#23303e"], [0.25, "#184f95"], [0.5, "#2a78d6"], [0.75, "#6da7ec"], [1, "#cde2fb"]]
+                    : [[0, "#e4e9ef"], [0.25, "#86b6ef"], [0.5, "#3987e5"], [0.75, "#1c5cab"], [1, "#104281"]];
+  const METRIC = { rooms_in_use: "rooms in use", courses_now: "courses" };
+  let metric = "rooms_in_use", runIndex = null, timer = null;
+  const peak = m => Math.max(1, ...byBuilding.map(r => +r[m]));  // fixed scale, so playing through the day compares
+  const stopPlay = () => { clearInterval(timer); timer = null; $("play").textContent = "▶"; $("play").setAttribute("aria-label", "Play through the day"); };
+  $("play").onclick = () => {
+    if (timer) return stopPlay();
+    if (runIndex >= +$("heat-time").max) runIndex = 0;
+    $("play").textContent = "❚❚"; $("play").setAttribute("aria-label", "Pause");
+    timer = setInterval(() => { if (runIndex >= +$("heat-time").max) return stopPlay(); runIndex = Math.min(runIndex + 3, +$("heat-time").max); heat(); }, 350);
+  };
+  $("heat-time").oninput = e => { stopPlay(); runIndex = +e.target.value; heat(); };
+  document.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+    metric = b.dataset.m;
+    document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    heat();
+  });
+
+  function heat() {
+    const date = [...new Set(lectureRuns.filter(r => r.day === day).map(r => r.date))].sort().at(-1);
+    const runs = lectureRuns.filter(r => r.date === date).map(r => r.time);
+    if (!date) {
+      $("heat-sub").textContent = `No ${DAYS[day]} readings yet.`;
+      $("heat-list").innerHTML = "";
+      return Plotly.react("campus-map", [], {}, config);
+    }
+    if (runIndex === null) {  // today: latest reading; other days: the reading closest to 10:00
+      const isToday = date === new Date().toLocaleDateString("sv-SE");
+      runIndex = isToday ? runs.length - 1 : runs.reduce((best, t, i) => Math.abs(+t.slice(11, 13) * 60 + +t.slice(14, 16) - 600) <
+        Math.abs(+runs[best].slice(11, 13) * 60 + +runs[best].slice(14, 16) - 600) ? i : best, 0);
+    }
+    runIndex = Math.min(runIndex, runs.length - 1);
+    const t = runs[runIndex];
+    Object.assign($("heat-time"), { max: runs.length - 1, value: runIndex });
+    $("heat-label").textContent = t.slice(11, 16);
+    $("heat-sub").textContent = `${METRIC[metric][0].toUpperCase() + METRIC[metric].slice(1)} per building on ${fmtDate(date, { weekday: "long", day: "numeric", month: "long" })}, the latest ${DAYS[day]} recorded.`;
+
+    const vals = {};
+    for (const r of byBuilding.filter(r => r.time === t)) {
+      const codes = r.building.match(CODE) ?? [r.building || "No building given"];
+      for (const c of codes) vals[c] = (vals[c] ?? 0) + +r[metric];
+    }
+    const ids = geo.features.map(f => f.id), zmax = peak(metric);
+    Plotly.react("campus-map", [{
+      type: "choroplethmapbox", geojson: geo, featureidkey: "id", locations: ids, z: ids.map(c => vals[c] ?? 0),
+      zmin: 0, zmax, colorscale: RAMP, marker: { opacity: 0.88, line: { width: 1, color: css("--paper") } },
+      customdata: geo.features.map(f => f.properties.name), hovertemplate: `<b>%{location}</b> %{customdata}<br>%{z} ${METRIC[metric]}<extra></extra>`,
+      colorbar: { thickness: 10, len: 0.5, x: 0.98, xanchor: "right", outlinewidth: 0, tickfont: { family: "Barlow, sans-serif", color: css("--muted") }, bgcolor: "rgba(0,0,0,0)" },
+    }, {
+      type: "scattermapbox", mode: "text", lon: geo.features.map(f => f.properties.centre[0]), lat: geo.features.map(f => f.properties.centre[1]),
+      text: ids, textfont: { family: "Barlow Semi Condensed, sans-serif", size: 12, color: dark ? "#f4f6f8" : "#22262b" }, hoverinfo: "skip",
+    }], {
+      mapbox: { style: dark ? "carto-darkmatter" : "carto-positron", center: { lon: centre[0], lat: centre[1] }, zoom: 16.4 },
+      margin: { l: 0, r: 0, t: 0, b: 0 }, paper_bgcolor: "rgba(0,0,0,0)", showlegend: false,
+      hoverlabel: { font: { family: "Barlow, sans-serif" } },
+    }, { displayModeBar: false, responsive: true, scrollZoom: false });
+
+    // Every place with something on, including ones not on the map (clinic, addresses in town).
+    const list = Object.entries(vals).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    const top = Math.max(1, ...list.map(([, v]) => v));
+    $("heat-list").innerHTML = list.length
+      ? list.map(([c, v]) => `<li><span title="${c}">${c}</span><span class="bar"><i style="width:${(100 * v / top).toFixed(0)}%"></i></span><b>${v}</b></li>`).join("")
+      : `<p>Nothing on at ${t.slice(11, 16)}.</p>`;
+  }
+
   function draw() {
     for (const b of lotButtons) b.setAttribute("aria-pressed", b.dataset.lot === lot);
     dayButtons.forEach((b, d) => b.setAttribute("aria-pressed", d === day));
@@ -328,6 +442,7 @@ Promise.all(FILES.map(csv)).then(loaded => {
       x.key.innerHTML = keyFor(pts);
       Plotly.react(x.plot, traces(pts, r => +r.v.toFixed(2), css(x.e.color), x.e.unit), layout(x.range[1], x.range[0]), config);
     }
+    heat();
   }
   draw();
 }).catch(e => $("updated").textContent = "Couldn't load the data (" + e.message + "). Reload the page to try again.");

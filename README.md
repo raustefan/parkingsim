@@ -11,6 +11,7 @@ Tracks parking lot occupancy at Ulm University every 5 minutes, together with co
 - `track.py` fetches the current values and appends them to one CSV file per source. It only needs Python 3, no packages. If one source fails, the others are still logged and the GitHub run shows a yellow warning.
 - `.github/workflows/track.yml` runs `track.py` and commits the CSVs. It's started every 5 minutes by a [cron-job.org](https://cron-job.org) job calling GitHub's `workflow_dispatch` API, because GitHub's own `schedule` trigger never fired for this repo.
 - `site/index.html` is the GitHub Pages site (deployed by `.github/workflows/pages.yml` when `site/` changes). It reads the CSVs live from the repo, so new data shows up without redeploying.
+- `site/buildings.json` holds the outlines of the coded campus buildings (M23–M28, N24–N27, O25–O29) for the heatmap. It was taken once from OpenStreetMap (© OpenStreetMap contributors, ODbL) and is static; buildings without an OSM outline only appear in the list next to the map.
 
 ## Data
 

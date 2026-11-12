@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Parking at Uni Ulm</title>
+<title>Parking and Wi-Fi at Uni Ulm</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
   :root {
@@ -14,31 +14,37 @@
     --led-bg: #0b1626;
     --led: #ffc233;       /* amber LED */
     --full: #ff6a5c;
+    --wifi-led: #4be3a0;  /* the Wi-Fi board glows green to tell it apart from the parking sign */
     --concrete: #e9ecee;
     --paper: #f7f8f9;
     --ink: #22262b;
     --muted: #5b636c;
     --grid: #dde1e5;
     --dot: #0e4c92;
+    --wifi: #138a5f;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --concrete: #15181c; --paper: #1d2126; --ink: #e8eaed; --muted: #a3abb4; --grid: #2e343b; --dot: #5b9be6; }
+    :root { --concrete: #15181c; --paper: #1d2126; --ink: #e8eaed; --muted: #a3abb4; --grid: #2e343b; --dot: #5b9be6; --wifi: #3cc48c; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--concrete); color: var(--ink); font: 400 16px/1.5 Barlow, system-ui, sans-serif; }
-  main { max-width: 1180px; margin: 0 auto; padding: 32px 20px 64px; }
+  main { max-width: 1240px; margin: 0 auto; padding: 28px 20px 64px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
 
-  /* The sign */
-  .sign {
-    background: var(--sign); color: var(--sign-edge); border-radius: 14px; padding: 20px 22px 22px;
-    box-shadow: inset 0 0 0 4px var(--sign), inset 0 0 0 7px var(--sign-edge);
-  }
-  .sign header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
-  .p { flex: none; width: 56px; height: 56px; border-radius: 8px; background: var(--sign-edge); color: var(--sign);
-       display: grid; place-items: center; font: 700 44px/1 "Barlow Semi Condensed", sans-serif; }
-  .sign h1 { margin: 0; font: 700 clamp(26px, 4vw, 38px)/1.05 "Barlow Semi Condensed", sans-serif; letter-spacing: .01em; }
-  .sign header p { margin: 2px 0 0; opacity: .8; font-size: 15px; }
-  .lots { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+  /* Page header */
+  .top { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .p { flex: none; width: 52px; height: 52px; border-radius: 9px; background: var(--sign); color: var(--sign-edge);
+       box-shadow: inset 0 0 0 3px var(--sign), inset 0 0 0 5px var(--sign-edge);
+       display: grid; place-items: center; font: 700 38px/1 "Barlow Semi Condensed", sans-serif; }
+  h1 { margin: 0; font: 700 clamp(26px, 4vw, 36px)/1.05 "Barlow Semi Condensed", sans-serif; }
+  .top p { margin: 2px 0 0; color: var(--muted); }
+
+  /* Live boards */
+  .board { border-radius: 14px; padding: 18px 20px 20px; color: var(--sign-edge); }
+  .board h2 { margin: 0 0 14px; font: 600 22px/1.1 "Barlow Semi Condensed", sans-serif; }
+  .sign { background: var(--sign); box-shadow: inset 0 0 0 4px var(--sign), inset 0 0 0 7px var(--sign-edge); }
+  .lots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
   .lots button {
     width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 8px 8px 8px 14px; border: 2px solid transparent; border-radius: 8px; cursor: pointer;
@@ -48,7 +54,6 @@
   .lots small { font: 500 14px/1.2 Barlow, sans-serif; opacity: .8; }
   .lots button:hover { background: rgba(255,255,255,.14); }
   .lots button[aria-pressed="true"] { border-color: var(--sign-edge); background: rgba(255,255,255,.16); }
-  .lots button:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
   .led {
     min-width: 4ch; padding: 6px 10px; border-radius: 5px; background: var(--led-bg); text-align: right;
     font: 700 24px/1 "Barlow Semi Condensed", sans-serif; font-variant-numeric: tabular-nums;
@@ -56,43 +61,92 @@
   }
   .led.full { color: var(--full); text-shadow: 0 0 8px rgba(255,106,92,.55); }
 
+  .wifi-board { background: var(--led-bg); display: flex; flex-direction: column; }
+  .wifi-now { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 8px 0 18px; }
+  .wifi-total { font: 700 clamp(72px, 11vw, 132px)/.9 "Barlow Semi Condensed", sans-serif; font-variant-numeric: tabular-nums;
+                color: var(--wifi-led); text-shadow: 0 0 18px rgba(75,227,160,.45); }
+  .wifi-now p { margin: 8px 0 0; opacity: .75; }
+  .split { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 12px; align-items: center; font-size: 15px; }
+  .split .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
+  .split .bar i { display: block; height: 100%; border-radius: 4px; background: var(--wifi-led); opacity: .8; }
+  .split b { font: 600 18px "Barlow Semi Condensed", sans-serif; font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* Day switcher */
+  .days { display: flex; align-items: center; gap: 10px; margin: 30px 0 16px; }
+  .days-track { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 4px;
+                background: var(--paper); border-radius: 12px; }
+  .days button { font: inherit; color: inherit; cursor: pointer; border: 0; border-radius: 9px; background: transparent; }
+  .days-track button { position: relative; padding: 10px 4px 12px; font: 600 18px/1 "Barlow Semi Condensed", sans-serif; }
+  .days-track button .long { display: none; }
+  @media (min-width: 720px) { .days-track button .long { display: inline; } .days-track button .short { display: none; } }
+  .days-track button:hover { background: var(--concrete); }
+  .days-track button[aria-pressed="true"] { background: var(--sign); color: var(--sign-edge); }
+  .days-track button.today::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 5px; height: 5px;
+                                    margin-left: -2.5px; border-radius: 50%; background: currentColor; opacity: .7; }
+  .days .step { flex: none; width: 44px; height: 44px; background: var(--paper); font-size: 22px; }
+  .days .step:hover { color: var(--sign); }
+  button:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
+
   /* Charts */
-  .lot-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px; margin: 40px 0 16px; }
-  .lot-head h2 { margin: 0; font: 700 32px/1.1 "Barlow Semi Condensed", sans-serif; }
-  .lot-head p { margin: 0; color: var(--muted); }
-  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
-  .day { background: var(--paper); border-radius: 10px; padding: 14px 14px 6px; border: 2px solid transparent; }
-  .day.today { border-color: var(--dot); }
-  .day h3 { margin: 0 0 2px 4px; font: 600 19px/1.2 "Barlow Semi Condensed", sans-serif; }
-  .day h3 small { font: 400 14px Barlow, sans-serif; color: var(--muted); margin-left: 8px; }
-  .plot { height: 220px; }
+  .chart { background: var(--paper); border-radius: 12px; padding: 16px 16px 10px; }
+  .chart h3 { margin: 0 4px; font: 600 21px/1.2 "Barlow Semi Condensed", sans-serif; }
+  .key { margin: 2px 4px 0; color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .key span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px;
+                      background: var(--c); vertical-align: -1px; }
+  .key .old::before { opacity: .35; }
+  .plot { height: 300px; }
   footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
   footer a { color: inherit; }
 </style>
 </head>
 <body>
 <main>
-  <section class="sign" aria-labelledby="title">
-    <header>
-      <div class="p" aria-hidden="true">P</div>
-      <div>
-        <h1 id="title">Parking at Uni Ulm</h1>
-        <p id="updated">Loading the latest counts…</p>
-      </div>
-    </header>
-    <ul class="lots" id="lots"></ul>
-  </section>
+  <header class="top">
+    <div class="p" aria-hidden="true">P</div>
+    <div>
+      <h1>Parking and Wi-Fi at Uni Ulm</h1>
+      <p id="updated">Loading the latest counts…</p>
+    </div>
+  </header>
 
-  <div class="lot-head">
-    <h2 id="lot-name"></h2>
-    <p id="lot-info"></p>
+  <div class="cols">
+    <section class="board sign" aria-labelledby="sign-title">
+      <h2 id="sign-title">Free spaces now</h2>
+      <ul class="lots" id="lots"></ul>
+    </section>
+    <section class="board wifi-board" aria-labelledby="wifi-title">
+      <h2 id="wifi-title">Devices on campus Wi-Fi now</h2>
+      <div class="wifi-now">
+        <div class="wifi-total" id="wifi-total">–</div>
+        <p>devices on eduroam and welcome together</p>
+      </div>
+      <div class="split" id="wifi-split"></div>
+    </section>
   </div>
-  <div id="grid"></div>
-  <footer>Each dot is one reading, taken about every 5 minutes. Data from <a href="http://tsu-app.rrooaarr.biz/front/mitarbeiter.html">the T.S.U. parking app</a>.</footer>
+
+  <nav class="days" aria-label="Weekday">
+    <button class="step" id="prev" aria-label="Previous day">‹</button>
+    <div class="days-track" id="days"></div>
+    <button class="step" id="next" aria-label="Next day">›</button>
+  </nav>
+
+  <div class="cols">
+    <section class="chart">
+      <h3 id="park-title"></h3>
+      <div class="key" id="park-key" style="--c: var(--dot)"></div>
+      <div class="plot" id="park-plot"></div>
+    </section>
+    <section class="chart">
+      <h3 id="wifi-chart-title"></h3>
+      <div class="key" id="wifi-key" style="--c: var(--wifi)"></div>
+      <div class="plot" id="wifi-plot"></div>
+    </section>
+  </div>
+  <footer>Readings are taken about every 5 minutes. Parking data from <a href="http://tsu-app.rrooaarr.biz/front/mitarbeiter.html">the T.S.U. parking app</a>, Wi-Fi data from <a href="https://grafana.uni-ulm.de/grafana/public-dashboards/c7d386879fae4b97b4dac792b7854d1d">the kiz network dashboard</a>.</footer>
 </main>
 <script>
-// raw.githubusercontent.com serves the live CSV (cached ~5 min), so the site never needs redeploying for new data.
-const CSV = "https://raw.githubusercontent.com/raustefan/parkingsim/main/parking.csv";
+// raw.githubusercontent.com serves the live CSVs (cached ~5 min), so the site never needs redeploying for new data.
+const RAW = "https://raw.githubusercontent.com/raustefan/parkingsim/main/";
 // Lot names as shown in the official app. Lots without a name show just their code.
 // M1 and M2 share one counter, which the page labels M1.
 const NAMES = { P09: "Manfred-Börner", P10: "Uni West", P20: "Parkhaus Mitte", P23: "Externer Parkplatz", P24: "Uni Nord",
@@ -101,74 +155,125 @@ const named = lot => NAMES[lot] ? `${NAMES[lot]} (${lot})` : lot;
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const $ = id => document.getElementById(id);
+const csv = name => fetch(RAW + name).then(r => r.ok ? r.text() : "").then(t => t.trim().split("\n").slice(1).filter(Boolean).map(l => l.split(",")));
+const fmtDate = (d, opts) => new Date(d + "T12:00").toLocaleDateString("en-GB", opts);
 
-fetch(CSV).then(r => r.text()).then(text => {
-  const rows = text.trim().split("\n").slice(1).map(l => {
-    // The CSV's "free" column actually holds *occupied* spaces (that's what the API returns), so convert here.
-    // Counters can drift above capacity; clamp so the sign never shows negative free spaces.
-    const [time, , lot, capacity, occupied] = l.split(",");
-    return { time, lot, capacity: +capacity, free: occupied === "" ? null : Math.max(0, capacity - occupied) };
-  }).filter(r => r.free !== null);
+// Timestamps are Berlin local time ("2026-11-11T15:21:06+01:00"), so read hour and date straight from the text.
+function stamp(r) {
+  r.date = r.time.slice(0, 10);
+  r.hour = +r.time.slice(11, 13) + +r.time.slice(14, 16) / 60;
+  r.day = (new Date(r.date + "T00:00Z").getUTCDay() + 6) % 7;  // 0 = Monday
+  return r;
+}
 
-  // Timestamps are Berlin local time ("2026-11-11T15:21:06+01:00"), so read hour and date straight from the text.
-  for (const r of rows) {
-    r.hour = +r.time.slice(11, 13) + +r.time.slice(14, 16) / 60;
-    r.day = (new Date(r.time.slice(0, 10) + "T00:00Z").getUTCDay() + 6) % 7;  // 0 = Monday
-  }
-  const latest = new Map(rows.map(r => [r.lot, r]));  // later rows overwrite earlier ones
+Promise.all([csv("parking.csv"), csv("wifi.csv")]).then(([parkRaw, wifiRaw]) => {
+  // The parking CSV's "free" column actually holds *occupied* spaces (that's what the API returns), so convert here.
+  // Counters can drift above capacity; clamp so the sign never shows negative free spaces.
+  const rows = parkRaw.filter(c => c[4] !== "").map(([time, , lot, capacity, occupied]) =>
+    stamp({ time, lot, capacity: +capacity, free: Math.max(0, capacity - occupied) }));
+  const wifi = wifiRaw.filter(c => c[1] !== "" && c[2] !== "").map(([time, eduroam, welcome]) =>
+    stamp({ time, eduroam: +eduroam, welcome: +welcome, total: +eduroam + +welcome }));
+
   const last = rows[rows.length - 1];
-  $("updated").textContent = `Free spaces as of ${last.time.slice(11, 16)} on ${new Date(last.time).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}`;
+  $("updated").textContent = `Live counts from ${last.time.slice(11, 16)} on ${fmtDate(last.date, { weekday: "long", day: "numeric", month: "long" })}`;
 
-  let current = new URLSearchParams(location.search).get("lot");
-  if (!latest.has(current)) current = latest.keys().next().value;
+  // Wi-Fi board
+  const w = wifi[wifi.length - 1];
+  if (w) {
+    $("wifi-total").textContent = w.total.toLocaleString("en-GB");
+    $("wifi-split").innerHTML = ["eduroam", "welcome"].map(k =>
+      `<span>${k}</span><span class="bar"><i style="width:${(100 * w[k] / Math.max(1, w.total)).toFixed(1)}%"></i></span><b>${w[k]}</b>`).join("");
+  } else {
+    $("wifi-total").textContent = "–";
+    $("wifi-split").textContent = "No Wi-Fi readings yet.";
+  }
+  const wifiMax = Math.max(100, ...wifi.map(r => r.total)) * 1.05;  // same scale on every day, so days compare at a glance
 
-  const buttons = [...latest.values()].map(r => {
-    const li = $("lots").appendChild(document.createElement("li"));
-    const b = li.appendChild(document.createElement("button"));
+  // State lives in the URL, so a view can be bookmarked or shared.
+  const params = new URLSearchParams(location.search);
+  const latest = new Map(rows.map(r => [r.lot, r]));  // later rows overwrite earlier ones
+  let lot = latest.has(params.get("lot")) ? params.get("lot") : latest.keys().next().value;
+  const today = (new Date().getDay() + 6) % 7;
+  let day = DAYS.findIndex(d => d.slice(0, 3).toLowerCase() === params.get("day"));
+  if (day < 0) day = today;
+  const save = () => history.replaceState(null, "", `?lot=${lot}&day=${DAYS[day].slice(0, 3).toLowerCase()}`);
+
+  const lotButtons = [...latest.values()].map(r => {
+    const b = $("lots").appendChild(document.createElement("li")).appendChild(document.createElement("button"));
     const full = r.free < Math.max(3, r.capacity * 0.05);
     b.innerHTML = `<span>${r.lot}${NAMES[r.lot] ? `<small>${NAMES[r.lot]}</small>` : ""}</span><span class="led${full ? " full" : ""}">${r.free}</span>`;
     b.setAttribute("aria-label", `${named(r.lot)}: ${r.free} of ${r.capacity} free`);
-    b.onclick = () => { current = r.lot; history.replaceState(null, "", "?lot=" + r.lot); draw(); };
+    b.onclick = () => { lot = r.lot; save(); draw(); };
     b.dataset.lot = r.lot;
     return b;
   });
 
-  const today = (new Date().getDay() + 6) % 7;
-  const plots = DAYS.map((name, d) => {
-    const card = $("grid").appendChild(document.createElement("section"));
-    card.className = "day" + (d === today ? " today" : "");
-    card.innerHTML = `<h3>${name}<small></small></h3><div class="plot"></div>`;
-    return { count: card.querySelector("small"), plot: card.querySelector(".plot") };
+  const dayButtons = DAYS.map((name, d) => {
+    const b = $("days").appendChild(document.createElement("button"));
+    b.innerHTML = `<span class="long">${name}</span><span class="short">${name.slice(0, 2)}</span>`;
+    b.setAttribute("aria-label", name + (d === today ? " (today)" : ""));
+    if (d === today) b.classList.add("today");
+    b.onclick = () => go(d);
+    return b;
+  });
+  const go = d => { day = (d + 7) % 7; save(); draw(); };
+  $("prev").onclick = () => go(day - 1);
+  $("next").onclick = () => go(day + 1);
+  document.addEventListener("keydown", e => {
+    if (e.target.closest?.(".lots")) return;
+    if (e.key === "ArrowLeft") go(day - 1);
+    if (e.key === "ArrowRight") go(day + 1);
   });
 
-  function draw() {
-    for (const b of buttons) b.setAttribute("aria-pressed", b.dataset.lot === current);
-    const lotRows = rows.filter(r => r.lot === current);
-    const cap = latest.get(current).capacity;
-    $("lot-name").textContent = named(current);
-    $("lot-info").textContent = `${cap} spaces, ${lotRows.length} readings so far`;
-    plots.forEach(({ count, plot }, d) => {
-      const pts = lotRows.filter(r => r.day === d);
-      count.textContent = d === today ? "today" : pts.length ? `${pts.length} readings` : "no data yet";
-      Plotly.react(plot, [{
-        x: pts.map(r => r.hour), y: pts.map(r => r.free),
-        customdata: pts.map(r => new Date(r.time.slice(0, 10)).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + ", " + r.time.slice(11, 16)),
-        type: "scatter", mode: "markers",
-        marker: { size: 7, color: css("--dot"), opacity: 0.45, line: { width: 0 } },
-        hovertemplate: "%{customdata}<br><b>%{y}</b> free<extra></extra>",
-      }], {
-        margin: { l: 38, r: 6, t: 6, b: 26 },
-        paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
-        font: { family: "Barlow, sans-serif", color: css("--muted"), size: 12 },
-        hoverlabel: { font: { family: "Barlow, sans-serif" } },
-        xaxis: { range: [0, 24], tickvals: [0, 6, 9, 12, 15, 18, 24], ticktext: ["0", "6", "9", "12", "15", "18", "24 h"], gridcolor: css("--grid"), zeroline: false, fixedrange: true },
-        yaxis: { range: [0, cap * 1.05], gridcolor: css("--grid"), zeroline: false, fixedrange: true, nticks: 4 },
-        showlegend: false,
-      }, { displayModeBar: false, responsive: true });
+  // One trace per date: the most recent date of the weekday is a line, older dates are faint dots behind it.
+  function traces(pts, y, color, unit) {
+    const dates = [...new Set(pts.map(r => r.date))].sort();
+    return dates.map((date, i) => {
+      const mine = pts.filter(r => r.date === date), newest = i === dates.length - 1;
+      return {
+        x: mine.map(r => r.hour), y: mine.map(y), type: "scatter",
+        mode: newest ? "lines+markers" : "markers",
+        line: { color, width: 2, shape: "spline", smoothing: 0.4 },
+        marker: { color, size: newest ? 5 : 6, opacity: newest ? 1 : 0.3 },
+        customdata: mine.map(r => `${fmtDate(r.date, { day: "numeric", month: "short" })}, ${r.time.slice(11, 16)}`),
+        hovertemplate: `%{customdata}<br><b>%{y}</b> ${unit}<extra></extra>`,
+      };
     });
   }
+  function keyFor(pts) {
+    const dates = [...new Set(pts.map(r => r.date))].sort();
+    if (!dates.length) return `<span>No ${DAYS[day]} readings yet</span>`;
+    const newest = dates.pop();
+    const label = newest === new Date().toLocaleDateString("sv-SE") ? "Today" : fmtDate(newest, { day: "numeric", month: "short" });
+    return `<span>${label}</span>` + (dates.length ? `<span class="old">${dates.length} earlier ${DAYS[day]}${dates.length > 1 ? "s" : ""}</span>` : "");
+  }
+  const layout = yMax => ({
+    margin: { l: 44, r: 8, t: 10, b: 28 },
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { family: "Barlow, sans-serif", color: css("--muted"), size: 12 },
+    hoverlabel: { font: { family: "Barlow, sans-serif" } },
+    xaxis: { range: [0, 24], tickvals: [0, 6, 9, 12, 15, 18, 24], ticktext: ["0", "6", "9", "12", "15", "18", "24 h"], gridcolor: css("--grid"), zeroline: false, fixedrange: true },
+    yaxis: { range: [0, yMax], gridcolor: css("--grid"), zeroline: false, fixedrange: true, nticks: 5 },
+    showlegend: false,
+  });
+  const config = { displayModeBar: false, responsive: true };
+
+  function draw() {
+    for (const b of lotButtons) b.setAttribute("aria-pressed", b.dataset.lot === lot);
+    dayButtons.forEach((b, d) => b.setAttribute("aria-pressed", d === day));
+
+    const park = rows.filter(r => r.lot === lot && r.day === day);
+    $("park-title").textContent = `Free spaces at ${named(lot)} on ${DAYS[day]}s`;
+    $("park-key").innerHTML = keyFor(park);
+    Plotly.react("park-plot", traces(park, r => r.free, css("--dot"), "free"), layout(latest.get(lot).capacity * 1.05), config);
+
+    const net = wifi.filter(r => r.day === day);
+    $("wifi-chart-title").textContent = `Wi-Fi devices on ${DAYS[day]}s`;
+    $("wifi-key").innerHTML = keyFor(net);
+    Plotly.react("wifi-plot", traces(net, r => r.total, css("--wifi"), "devices"), layout(wifiMax), config);
+  }
   draw();
-}).catch(e => $("updated").textContent = "Couldn't load the parking data (" + e.message + "). Reload the page to try again.");
+}).catch(e => $("updated").textContent = "Couldn't load the data (" + e.message + "). Reload the page to try again.");
 </script>
 </body>
 </html>

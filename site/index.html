@@ -96,6 +96,8 @@
   .key span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px;
                       background: var(--c); vertical-align: -1px; }
   .key .old::before { opacity: .35; }
+  .toggles label { cursor: pointer; color: var(--ink); font-weight: 600; }
+  .toggles input { accent-color: var(--c); margin: 0 4px 0 0; vertical-align: -2px; }
   .plot { height: 300px; }
   .section { margin: 40px 0 4px; font: 700 28px/1.1 "Barlow Semi Condensed", sans-serif; }
   .section + p { margin: 0 0 16px; color: var(--muted); }
@@ -158,18 +160,12 @@
     <button class="step" id="next" aria-label="Next day">›</button>
   </nav>
 
-  <div class="cols">
-    <section class="chart">
-      <h3 id="park-title"></h3>
-      <div class="key" id="park-key" style="--c: var(--dot)"></div>
-      <div class="plot" id="park-plot"></div>
-    </section>
-    <section class="chart">
-      <h3 id="wifi-chart-title"></h3>
-      <div class="key" id="wifi-key" style="--c: var(--wifi)"></div>
-      <div class="plot" id="wifi-plot"></div>
-    </section>
-  </div>
+  <section class="chart">
+    <h3 id="combo-title"></h3>
+    <div class="key toggles" id="toggles"></div>
+    <div class="key" id="combo-key" style="--c: var(--muted)"></div>
+    <div class="plot" id="combo-plot"></div>
+  </section>
   <h2 class="section">Lectures across campus</h2>
   <p id="heat-sub">Rooms in use per building.</p>
   <div class="heat">
@@ -191,8 +187,8 @@
     </aside>
   </div>
 
-  <h2 class="section">Campus context</h2>
-  <p>What else was going on at the same times, for the same weekday.</p>
+  <h2 class="section">All readings</h2>
+  <p>Each source on its own, for the same weekday. Tick any of them above to compare.</p>
   <div class="extras" id="extras"></div>
 
   <footer>Readings are taken about every 5 minutes. Sources: <a href="http://tsu-app.rrooaarr.biz/front/mitarbeiter.html">T.S.U. parking app</a>,
@@ -339,17 +335,36 @@ Promise.all([...FILES.map(csv), fetch("buildings.json?v=2").then(r => r.json()).
   });
   const config = { displayModeBar: false, responsive: true };
 
-  // Context cards. Rows whose value is missing are dropped; the y range covers every day, so days compare.
-  const extras = EXTRA.map(e => {
-    const pts = data[e.file].map(r => ({ ...r, v: e.y(r) })).filter(r => r.v !== "" && Number.isFinite(+r.v)).map(r => stamp({ ...r, v: +r.v }));
-    const vals = pts.map(r => r.v), lo = Math.min(0, ...vals), hi = Math.max(1, ...vals);
+  // Every data source as a series: { title, color, unit, pts() with a value v, range() of y, now() }.
+  // pts and range are functions because parking follows the selected lot. Ranges cover every day, so days compare.
+  const SERIES = [
+    { title: () => `Taken spaces at ${named(lot)}`, color: "--dot", unit: "taken", on: true,
+      pts: () => rows.filter(r => r.lot === lot).map(r => ({ ...r, v: r.capacity - r.free })),
+      range: () => [0, latest.get(lot).capacity * 1.05],
+      now: () => { const r = latest.get(lot); return `${r.capacity - r.free}<small>of ${r.capacity}</small>`; } },
+    { title: () => "Wi-Fi devices", color: "--wifi", unit: "devices", on: true,
+      pts: () => wifi.map(r => ({ ...r, v: r.total })), range: () => [0, wifiMax],
+      now: () => w ? `${w.total.toLocaleString("en-GB")}<small>devices</small>` : "–" },
+    ...EXTRA.map(e => {
+      // Rows whose value is missing are dropped.
+      const pts = data[e.file].map(r => ({ ...r, v: e.y(r) })).filter(r => r.v !== "" && Number.isFinite(+r.v)).map(r => stamp({ ...r, v: +r.v }));
+      const vals = pts.map(r => r.v), lo = Math.min(0, ...vals), hi = Math.max(1, ...vals), last = data[e.file].at(-1);
+      return { title: () => e.title, color: e.color, unit: e.unit, pts: () => pts, range: () => [lo < 0 ? lo * 1.1 : 0, hi * 1.08],
+               now: () => last ? e.now(last) : "–" };
+    }),
+  ];
+  for (const s of SERIES) {
     const card = $("extras").appendChild(document.createElement("section"));
     card.className = "chart";
-    card.style.setProperty("--c", `var(${e.color})`);
-    const last = data[e.file].at(-1);
-    card.innerHTML = `<header><h3>${e.title}</h3><div class="now">${last ? e.now(last) : "–"}</div></header><div class="key"></div><div class="plot"></div>`;
-    return { e, pts, range: [lo < 0 ? lo * 1.1 : 0, hi * 1.08], key: card.querySelector(".key"), plot: card.querySelector(".plot") };
-  });
+    card.style.setProperty("--c", `var(${s.color})`);
+    card.innerHTML = `<header><h3></h3><div class="now"></div></header><div class="key"></div><div class="plot"></div>`;
+    [s.h3, s.now_, s.key, s.plot] = ["h3", ".now", ".key", ".plot"].map(q => card.querySelector(q));
+    const label = $("toggles").appendChild(document.createElement("label"));
+    label.style.setProperty("--c", `var(${s.color})`);
+    label.innerHTML = `<input type="checkbox"${s.on ? " checked" : ""}><b></b>`;
+    [s.box, s.label] = [label.querySelector("input"), label.querySelector("b")];
+    s.box.onchange = () => draw();
+  }
 
   // Campus heatmap: one run (time of day) on the latest date of the selected weekday.
   const CODE = /[NOMW]\d{2}(?:\.\d)?/g;  // "O29 / LGM" counts for O29
@@ -435,21 +450,29 @@ Promise.all([...FILES.map(csv), fetch("buildings.json?v=2").then(r => r.json()).
     for (const b of lotButtons) b.setAttribute("aria-pressed", b.dataset.lot === lot);
     dayButtons.forEach((b, d) => b.setAttribute("aria-pressed", d === day));
 
-    const park = rows.filter(r => r.lot === lot && r.day === day);
-    $("park-title").textContent = `Free spaces at ${named(lot)} on ${DAYS[day]}s`;
-    $("park-key").innerHTML = keyFor(park);
-    Plotly.react("park-plot", traces(park, r => r.free, css("--dot"), "free"), layout(latest.get(lot).capacity * 1.05), config);
-
-    const net = wifi.filter(r => r.day === day);
-    $("wifi-chart-title").textContent = `Wi-Fi devices on ${DAYS[day]}s`;
-    $("wifi-key").innerHTML = keyFor(net);
-    Plotly.react("wifi-plot", traces(net, r => r.total, css("--wifi"), "devices"), layout(wifiMax), config);
-
-    for (const x of extras) {
-      const pts = x.pts.filter(r => r.day === day);
-      x.key.innerHTML = keyFor(pts);
-      Plotly.react(x.plot, traces(pts, r => +r.v.toFixed(2), css(x.e.color), x.e.unit), layout(x.range[1], x.range[0]), config);
+    // Compare chart: every ticked series on its own y scale. The first two show their axis (left, right); hover gives real values.
+    const on = [];
+    for (const s of SERIES) {
+      const pts = s.pts().filter(r => r.day === day), [lo, hi] = s.range(), title = s.title();
+      s.h3.textContent = title;
+      s.label.textContent = title;
+      s.now_.innerHTML = s.now();
+      s.key.innerHTML = keyFor(pts);
+      Plotly.react(s.plot, traces(pts, r => +r.v.toFixed(2), css(s.color), s.unit), layout(hi, lo), config);
+      if (s.box.checked) on.push({ s, pts });
     }
+    $("combo-title").textContent = `Compare on ${DAYS[day]}s`;
+    $("combo-key").innerHTML = on.length ? keyFor(on[0].pts) : "<span>Tick a reading to show it</span>";
+    const combo = layout(1);
+    combo.margin.r = 52;
+    on.forEach(({ s }, i) => {
+      const [lo, hi] = s.range();
+      combo[i ? `yaxis${i + 1}` : "yaxis"] = { ...combo.yaxis, range: [lo, hi], tickfont: { color: css(s.color) },
+        ...(i && { overlaying: "y", side: "right", showgrid: false, visible: i === 1 }) };
+    });
+    Plotly.react("combo-plot", on.flatMap(({ s, pts }, i) =>
+      traces(pts, r => +r.v.toFixed(2), css(s.color), s.unit).map(t => ({ ...t, yaxis: i ? `y${i + 1}` : "y" }))), combo, config);
+
     try { heat(); } catch (e) { $("heat-sub").textContent = "Couldn't draw the campus map (" + e.message + ")."; console.error(e); }
   }
   draw();
